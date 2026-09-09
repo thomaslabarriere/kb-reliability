@@ -37,6 +37,14 @@ def test_chunking_pinpoints_the_relevant_section_and_cuts_context() -> None:
     assert a.context_reduction > 0.5  # the section is a fraction of the whole doc
 
 
+def test_chunk_figures_match_the_readme() -> None:
+    # Pins the exact numbers quoted in the README so they can't silently drift.
+    a = analyze("Quels justificatifs et preuve d'achat joindre à un litige ?", max_chars=130)
+    assert a.whole_context_chars == 667
+    assert a.chunk_context_chars == 138
+    assert round(a.context_reduction * 100) == 79
+
+
 def test_chunk_text_respects_the_size_bound() -> None:
     chunks = chunk_text("Un. Deux. Trois. Quatre. Cinq.", max_chars=12)
     assert len(chunks) >= 2

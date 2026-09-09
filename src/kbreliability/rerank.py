@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from .llm_client import make_client
 from .models import Article, Question
 from .text import tokens as _tokens
 
@@ -41,11 +42,9 @@ class LLMReranker:
     Fail-open: on any error, keep the first-stage order."""
 
     def __init__(self, model: str = "gpt-4o", provider: str = "openai") -> None:
-        from .answer import _make_client
-
         self.name = f"rerank:llm:{model}"
         self._model = model
-        self._client = _make_client(provider, None, None)
+        self._client = make_client(provider)
 
     def rerank(self, question: Question, candidates: list[Article]) -> list[Article]:
         if not candidates:

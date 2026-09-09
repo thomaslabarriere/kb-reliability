@@ -123,16 +123,15 @@ def _chunks(args: argparse.Namespace) -> int:
 
 def _rerank(args: argparse.Namespace) -> int:
     """Precision@1 before vs after reranking, on a crafted shortlist."""
-    from .rerank import LexicalReranker, LLMReranker, demo_scenario, top1_correct
+    from .rerank import LexicalReranker, LLMReranker, Reranker, demo_scenario, top1_correct
 
     question, candidates, gold_topic = demo_scenario()
-    reranker = (
-        LLMReranker(model=args.model, provider=args.provider)
-        if args.reranker == "llm"
-        else LexicalReranker()
-    )
+    reranker: Reranker
     if args.reranker == "llm":
-        _require_key(args.provider)
+        _require_key(args.provider)  # guard BEFORE constructing the LLM client
+        reranker = LLMReranker(model=args.model, provider=args.provider)
+    else:
+        reranker = LexicalReranker()
     reranked = reranker.rerank(question, candidates)
     print(f"Reranking ({reranker.name})")
     print(f"  Question: {question.text}")

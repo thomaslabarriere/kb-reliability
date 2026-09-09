@@ -9,9 +9,9 @@ the real system (needs a key). Fixtures drive the mutation-proof tests.
 from __future__ import annotations
 
 import json
-import os
 from typing import Protocol
 
+from .llm_client import make_client
 from .models import Answer, Article, Question, TokenUsage
 
 
@@ -56,8 +56,6 @@ class HallucinatingAnswerer:
         )
 
 
-_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-
 _ANSWER_TOOL = {
     "type": "function",
     "function": {
@@ -92,18 +90,6 @@ def _render_articles(retrieved: list[Article]) -> str:
     return "\n".join(f"[{a.article_id}] {a.title}: {a.body}" for a in retrieved)
 
 
-def _make_client(provider: str, api_key: str | None, base_url: str | None):  # type: ignore[no-untyped-def]
-    from openai import OpenAI
-
-    if base_url is None and provider == "openrouter":
-        base_url = _OPENROUTER_BASE_URL
-    if api_key is None:
-        api_key = os.environ.get(
-            "OPENROUTER_API_KEY" if provider == "openrouter" else "OPENAI_API_KEY"
-        )
-    return OpenAI(api_key=api_key, base_url=base_url)
-
-
 class LLMAnswerer:
     """The real system (needs OPENAI_API_KEY / OPENROUTER_API_KEY)."""
 
@@ -112,12 +98,12 @@ class LLMAnswerer:
     ) -> None:
         self.name = f"llm:{model}"
         self._model = model
-        self._client = _make_client(provider, api_key, None)
+        self._client = make_client(provider, api_key)
 
     def answer(self, question: Question, retrieved: list[Article]) -> tuple[Answer, TokenUsage]:
         user = f"Question: {question.text}\n\nArticles:\n{_render_articles(retrieved)}"
         try:
-            completion = self._client.chat.completions.create(
+            completion = self._client.chat.completions.create(  # type: ignore[call-overload]
                 model=self._model,
                 tools=[_ANSWER_TOOL],
                 tool_choice="required",
@@ -169,7 +155,7 @@ class LLMGroundednessJudge:
     ) -> None:
         self.name = f"llm-judge:{model}"
         self._model = model
-        self._client = _make_client(provider, api_key, None)
+        self._client = make_client(provider, api_key)
 
     def is_grounded(self, answer_text: str, article: Article) -> bool:
         prompt = (

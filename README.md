@@ -71,7 +71,7 @@ With a key, an LLM answers each question grounded in the retrieved articles and 
 
 ## Retrieval depth (chunking · hybrid · reranking)
 
-The three retrieval bricks the role names, each measured behind the `Retriever` protocol:
+The three retrieval bricks the role names, each a small dedicated module (`Retriever` for hybrid, `Reranker` for reranking, a standalone analysis for chunking):
 
 **Hybrid retrieval** — `SemanticRetriever` (embeddings + cosine) and `HybridRetriever` (reciprocal-rank fusion of the lexical and semantic rankings — no score normalization needed). Compare them on recall:
 
@@ -84,18 +84,23 @@ kb-reliability diagnose --retriever hybrid    # run the full diagnosis on the hy
 
 ```
 $ kb-reliability chunks
+Chunking — récupération ciblée sur un article long
+  Question: Quels justificatifs et preuve d'achat joindre à un litige ?
   Article entier: 667 caractères de contexte
   Meilleur chunk: 138 caractères
   Bonne section retrouvée: oui
   Réduction du contexte: 79%
+  Chunk: « Pour instruire le litige, joignez une preuve d'achat, une capture de la transaction et, le cas échéant, un échange écrit avec le marchand. »
 ```
 
-Same answer, **79% less context** fed to the model — better groundedness and lower cost.
+Same answer, **79% less context** fed to the model — better groundedness and lower cost. (These figures are pinned by a regression test so the README can't drift from the code.)
 
 **Reranking** — first-stage lexical retrieval optimises recall, not precision@1; a wordy distractor can sit at rank 1 (which the answerer cites). A reranker fixes the order (offline lexical, or `--reranker llm`):
 
 ```
 $ kb-reliability rerank
+Reranking (rerank:lexical-title)
+  Question: Comment activer ma nouvelle carte ?
   Rang 1 avant: card-limit (incorrect)
   Rang 1 après: card-activation (correct)
 ```
