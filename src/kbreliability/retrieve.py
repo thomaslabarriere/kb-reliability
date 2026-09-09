@@ -14,39 +14,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .kb import ARTICLES
+from .kb import ARTICLES, is_permitted
 from .models import Article, Question
-
-_STOPWORDS = {
-    "je", "j", "mon", "ma", "mes", "le", "la", "les", "un", "une", "des", "du",
-    "de", "d", "et", "ou", "a", "au", "aux", "en", "sur", "pour", "par", "que",
-    "qui", "comment", "est", "il", "elle", "sous", "combien", "temps",
-    "puis", "sont", "quels", "quelles", "necessaires", "concerne", "afin",
-}
-
-
-def _tokens(text: str) -> list[str]:
-    lowered = text.lower().translate(str.maketrans("àâäéèêëîïôöùûüç", "aaaeeeeiioouuuc"))
-    return [t for t in _split(lowered) if len(t) > 2 and t not in _STOPWORDS]
-
-
-def _split(text: str) -> list[str]:
-    out: list[str] = []
-    current = ""
-    for ch in text:
-        if ch.isalnum():
-            current += ch
-        else:
-            if current:
-                out.append(current)
-            current = ""
-    if current:
-        out.append(current)
-    return out
-
-
-def _permitted(article: Article, user_scopes: list[str]) -> bool:
-    return all(scope in user_scopes for scope in article.required_scopes)
+from .text import tokens as _tokens
 
 
 class Retriever(Protocol):
@@ -71,7 +41,7 @@ class KeywordRetriever:
         q_terms = set(_tokens(question.text))
         scored: list[tuple[int, str, Article]] = []
         for article in ARTICLES:
-            if self.permission_aware and not _permitted(article, question.user_scopes):
+            if self.permission_aware and not is_permitted(article, question.user_scopes):
                 continue
             doc_terms = _tokens(f"{article.title} {article.body} {article.topic}")
             score = sum(doc_terms.count(term) for term in q_terms)

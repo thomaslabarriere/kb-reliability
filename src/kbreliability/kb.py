@@ -88,6 +88,12 @@ ARTICLES: list[Article] = [
 ]
 
 
+def is_permitted(article: Article, user_scopes: list[str]) -> bool:
+    """True iff a user holding `user_scopes` is allowed to see `article`.
+    Single source of truth for the permission check (retrieval + evaluation)."""
+    return all(scope in user_scopes for scope in article.required_scopes)
+
+
 def get_article(article_id: str) -> Article:
     for article in ARTICLES:
         if article.article_id == article_id:

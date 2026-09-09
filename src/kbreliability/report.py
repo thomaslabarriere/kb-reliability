@@ -80,11 +80,8 @@ def render_report(report: DiagnosticReport) -> str:
         if usd is not None:
             cost += f"   Coût estimé: ${usd:.4f} (prix catalogue indicatif)"
         lines.append(cost)
-        lines.append(
-            f"  Latence: {report.total_latency_ms / report.total:.0f} ms/question"
-            if report.total
-            else ""
-        )
+        if report.total:
+            lines.append(f"  Latence: {report.total_latency_ms / report.total:.0f} ms/question")
 
     lines.append(bar)
     return "\n".join(lines)

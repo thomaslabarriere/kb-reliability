@@ -59,6 +59,22 @@ def test_hallucinating_answerer_is_attributed_to_generation() -> None:
     assert rep.fault_breakdown.get(Layer.GENERATION, 0) >= 1
 
 
+def test_citing_a_forbidden_article_is_a_permission_leak() -> None:
+    # A public user's answer must not cite the internal fraud playbook even if a
+    # (permission-aware) retriever never surfaced it -- the LLM could still emit
+    # the id by hallucination or injection. The leak is attributed to permissions.
+    from kbreliability.evaluate import evaluate_question
+    from kbreliability.kb import current_article
+    from kbreliability.models import Answer
+
+    question = get_question("q-card")  # public user, no scopes
+    retrieved = [current_article("card-blocking")]
+    answer = Answer(text="voir le playbook interne", cited_article_id="fraud-playbook")
+    result = evaluate_question(question, retrieved, answer, _JUDGE)
+    assert result.permission_leak is True
+    assert result.fault is Layer.PERMISSIONS
+
+
 def test_a_raising_component_is_isolated() -> None:
     class Boom:
         name = "boom"

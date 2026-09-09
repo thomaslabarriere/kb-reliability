@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from .models import Article, GroundGoldItem, JudgeCalibration
-from .retrieve import _tokens
+from .text import tokens as _tokens
 
 
 class GroundednessJudge(Protocol):

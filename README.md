@@ -13,7 +13,7 @@ A RAG support assistant is only trustworthy if, when it answers wrong, you can s
 
 A score tells you *that* it failed; a layer tells you *where to fix it*.
 
-> **Scope.** Not a real knowledge base and not production advice. The articles, questions, and permission scopes are **synthetic** (a fintech support KB, invented), no client data. The value is the diagnostic instrument, not the content. Plug in a real KB + eval set for real numbers.
+> **Scope.** Not a real knowledge base and not production advice. The articles, questions, and permission scopes are **synthetic** (a fintech support KB, invented), no client data. **The retriever is a deliberate lexical (term-overlap) baseline — no embeddings, no hybrid search, no reranking**; it exists so the diagnostics have something to grade, and a real retriever drops in behind the `Retriever` Protocol unchanged. The value here is the diagnostic instrument, not the retrieval sophistication. Plug in a real KB + retriever + eval set for real numbers.
 
 ## Quick start (no API key needed)
 
@@ -27,9 +27,21 @@ kb-reliability calibrate     # how reliable is the groundedness judge itself?
 
 ## The point: a failure the obvious metrics miss
 
-The offline baseline scores **100% retrieval recall and 100% groundedness** — and still ships a wrong answer:
+The offline baseline scores **100% retrieval recall and 100% groundedness** — and still ships a wrong answer. Verbatim `kb-reliability diagnose`:
 
 ```
+────────────────────────────────────────────────────────────────
+kb-reliability — keyword / heuristic
+────────────────────────────────────────────────────────────────
+Réussite: 4/5 questions
+
+Par question (faute attribuée à la couche)
+  ✗ q-card  [freshness]   cité: card-block-v1
+  ✓ q-iban   cité: iban-v1
+  ✓ q-refund   cité: refund-v1
+  ✓ q-kyc   cité: kyc-v1
+  ✓ q-chargeback   cité: chargeback-v1
+
 Métriques par couche
   Retrieval recall:   100%
   Groundedness:       100%
@@ -38,6 +50,7 @@ Métriques par couche
 
 Attribution des fautes
   freshness    1
+────────────────────────────────────────────────────────────────
 ```
 
 The card-blocking question retrieves the right topic and answers faithfully — but from the **outdated** article, because the older, wordier version out-scores the concise current one (a real term-frequency trap). Recall and groundedness both look perfect; the failure is only visible on the **freshness** axis. That is why per-layer attribution matters. A freshness-aware retriever fixes it:
