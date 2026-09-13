@@ -39,7 +39,7 @@ def build_report(system_name: str, results: list[QuestionResult]) -> DiagnosticR
 
 def render_report(report: DiagnosticReport) -> str:
     bar = "─" * 64
-    lines = [bar, f"kb-reliability — {report.system_name}", bar]
+    lines = [bar, f"kb-reliability: {report.system_name}", bar]
     lines.append(f"Réussite: {report.passed}/{report.total} questions")
     lines.append("")
 

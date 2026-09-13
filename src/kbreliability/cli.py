@@ -111,7 +111,7 @@ def _chunks(args: argparse.Namespace) -> int:
 
     question = "Quels justificatifs et preuve d'achat joindre à un litige ?"
     a = analyze(question, max_chars=args.max_chars)
-    print("Chunking — récupération ciblée sur un article long")
+    print("Chunking: récupération ciblée sur un article long")
     print(f"  Question: {a.question}")
     print(f"  Article entier: {a.whole_context_chars} caractères de contexte")
     print(f"  Meilleur chunk: {a.chunk_context_chars} caractères")

@@ -31,7 +31,7 @@ The offline baseline scores **100% retrieval recall and 100% groundedness**, and
 
 ```
 ────────────────────────────────────────────────────────────────
-kb-reliability, keyword / heuristic
+kb-reliability: keyword / heuristic
 ────────────────────────────────────────────────────────────────
 Réussite: 4/5 questions
 
@@ -84,7 +84,7 @@ kb-reliability diagnose --retriever hybrid    # run the full diagnosis on the hy
 
 ```
 $ kb-reliability chunks
-Chunking, récupération ciblée sur un article long
+Chunking: récupération ciblée sur un article long
   Question: Quels justificatifs et preuve d'achat joindre à un litige ?
   Article entier: 667 caractères de contexte
   Meilleur chunk: 138 caractères
