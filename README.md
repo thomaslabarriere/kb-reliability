@@ -2,7 +2,7 @@
 
 **Layer-attributed reliability diagnostics for a customer-service RAG knowledge base.**
 
-A RAG support assistant is only trustworthy if, when it answers wrong, you can say **which layer failed** — the job it's built for is *"diagnostiquer la performance d'un RAG en séparant les problèmes de retrieval, de contexte, de modèle et de génération."* `kb-reliability` runs a knowledge-base RAG pipeline over a labelled question set and attributes every failure to one layer:
+A RAG support assistant is only trustworthy if, when it answers wrong, you can say **which layer failed**, the job it's built for is *"diagnostiquer la performance d'un RAG en séparant les problèmes de retrieval, de contexte, de modèle et de génération."* `kb-reliability` runs a knowledge-base RAG pipeline over a labelled question set and attributes every failure to one layer:
 
 | Layer | The failure it catches |
 |---|---|
@@ -13,7 +13,7 @@ A RAG support assistant is only trustworthy if, when it answers wrong, you can s
 
 A score tells you *that* it failed; a layer tells you *where to fix it*.
 
-> **Scope.** Not a real knowledge base and not production advice. The articles, questions, and permission scopes are **synthetic** (a fintech support KB, invented), no client data. The retrievers are compact, honest implementations — a lexical term-frequency baseline, an embeddings retriever, and reciprocal-rank-fusion hybrid — **not** a production vector DB or a cross-encoder reranker; a real stack drops in behind the `Retriever` / `Reranker` protocols unchanged. The value here is the **diagnostic instrument** (and how it attributes failures), not the retrieval sophistication. Plug in a real KB + retriever + eval set for real numbers.
+> **Scope.** Not a real knowledge base and not production advice. The articles, questions, and permission scopes are **synthetic** (a fintech support KB, invented), no client data. The retrievers are compact, honest implementations, a lexical term-frequency baseline, an embeddings retriever, and reciprocal-rank-fusion hybrid, **not** a production vector DB or a cross-encoder reranker; a real stack drops in behind the `Retriever` / `Reranker` protocols unchanged. The value here is the **diagnostic instrument** (and how it attributes failures), not the retrieval sophistication. Plug in a real KB + retriever + eval set for real numbers.
 
 ## Quick start (no API key needed)
 
@@ -27,11 +27,11 @@ kb-reliability calibrate     # how reliable is the groundedness judge itself?
 
 ## The point: a failure the obvious metrics miss
 
-The offline baseline scores **100% retrieval recall and 100% groundedness** — and still ships a wrong answer. Verbatim `kb-reliability diagnose`:
+The offline baseline scores **100% retrieval recall and 100% groundedness**, and still ships a wrong answer. Verbatim `kb-reliability diagnose`:
 
 ```
 ────────────────────────────────────────────────────────────────
-kb-reliability — keyword / heuristic
+kb-reliability, keyword / heuristic
 ────────────────────────────────────────────────────────────────
 Réussite: 4/5 questions
 
@@ -53,7 +53,7 @@ Attribution des fautes
 ────────────────────────────────────────────────────────────────
 ```
 
-The card-blocking question retrieves the right topic and answers faithfully — but from the **outdated** article, because the older, wordier version out-scores the concise current one (a real term-frequency trap). Recall and groundedness both look perfect; the failure is only visible on the **freshness** axis. That is why per-layer attribution matters. A freshness-aware retriever fixes it:
+The card-blocking question retrieves the right topic and answers faithfully, but from the **outdated** article, because the older, wordier version out-scores the concise current one (a real term-frequency trap). Recall and groundedness both look perfect; the failure is only visible on the **freshness** axis. That is why per-layer attribution matters. A freshness-aware retriever fixes it:
 
 ```bash
 kb-reliability diagnose --retriever fresh   # the stale sibling is dropped -> all pass
@@ -67,24 +67,24 @@ kb-reliability diagnose --answerer llm --model gpt-4o
 # OpenRouter: --answerer llm --provider openrouter --model anthropic/claude-3.7-sonnet
 ```
 
-With a key, an LLM answers each question grounded in the retrieved articles and an LLM judges groundedness; the report adds inference cost ($/question, illustrative) and latency — the *qualité / latence / coût* arbitrage the role calls for.
+With a key, an LLM answers each question grounded in the retrieved articles and an LLM judges groundedness; the report adds inference cost ($/question, illustrative) and latency, the *qualité / latence / coût* arbitrage the role calls for.
 
 ## Retrieval depth (chunking · hybrid · reranking)
 
 The three retrieval bricks the role names, each a small dedicated module (`Retriever` for hybrid, `Reranker` for reranking, a standalone analysis for chunking):
 
-**Hybrid retrieval** — `SemanticRetriever` (embeddings + cosine) and `HybridRetriever` (reciprocal-rank fusion of the lexical and semantic rankings — no score normalization needed). Compare them on recall:
+**Hybrid retrieval**, `SemanticRetriever` (embeddings + cosine) and `HybridRetriever` (reciprocal-rank fusion of the lexical and semantic rankings, no score normalization needed). Compare them on recall:
 
 ```bash
 kb-reliability retrievers --model gpt-4o      # lexical vs semantic vs hybrid (needs a key)
 kb-reliability diagnose --retriever hybrid    # run the full diagnosis on the hybrid retriever
 ```
 
-**Chunking** — whole-article retrieval feeds the entire document as context even when one section answers the question. Chunking pinpoints the section (offline):
+**Chunking**, whole-article retrieval feeds the entire document as context even when one section answers the question. Chunking pinpoints the section (offline):
 
 ```
 $ kb-reliability chunks
-Chunking — récupération ciblée sur un article long
+Chunking, récupération ciblée sur un article long
   Question: Quels justificatifs et preuve d'achat joindre à un litige ?
   Article entier: 667 caractères de contexte
   Meilleur chunk: 138 caractères
@@ -93,9 +93,9 @@ Chunking — récupération ciblée sur un article long
   Chunk: « Pour instruire le litige, joignez une preuve d'achat, une capture de la transaction et, le cas échéant, un échange écrit avec le marchand. »
 ```
 
-Same answer, **79% less context** fed to the model — better groundedness and lower cost. (These figures are pinned by a regression test so the README can't drift from the code.)
+Same answer, **79% less context** fed to the model, better groundedness and lower cost. (These figures are pinned by a regression test so the README can't drift from the code.)
 
-**Reranking** — first-stage lexical retrieval optimises recall, not precision@1; a wordy distractor can sit at rank 1 (which the answerer cites). A reranker fixes the order (offline lexical, or `--reranker llm`):
+**Reranking**, first-stage lexical retrieval optimises recall, not precision@1; a wordy distractor can sit at rank 1 (which the answerer cites). A reranker fixes the order (offline lexical, or `--reranker llm`):
 
 ```
 $ kb-reliability rerank
@@ -107,7 +107,7 @@ Reranking (rerank:lexical-title)
 
 ## Who judges the judge?
 
-Groundedness is a judgement call, so its verdict is delegated to a judge — whose **own** reliability is measured against a labelled gold set:
+Groundedness is a judgement call, so its verdict is delegated to a judge, whose **own** reliability is measured against a labelled gold set:
 
 ```
 Calibration du juge « static-overlap »
