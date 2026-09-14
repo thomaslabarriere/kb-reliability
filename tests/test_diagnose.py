@@ -1,5 +1,5 @@
-"""Mutation proof: each layer's failure must be produced and attributed to the
-right layer, and a correct system must pass cleanly."""
+"""Per-layer fault injection: each layer's failure must be produced and
+attributed to the right layer, and a correct system must pass cleanly."""
 
 from __future__ import annotations
 
@@ -90,6 +90,30 @@ def test_a_crashing_retriever_is_attributed_to_retrieval_not_generation() -> Non
     assert r.fault is Layer.RETRIEVAL
     assert r.retrieval_miss is True
     assert r.trace["crashed_stage"] == "retrieval"
+
+
+def test_a_crash_inside_the_diagnostic_harness_is_attributed_to_infra() -> None:
+    # Retriever and answerer succeed; the judge (called inside evaluate_question,
+    # i.e. the diagnostic harness itself) raises. That is neither a retrieval nor
+    # a generation fault of the system under test -- it is our own instrument
+    # failing, so it must be INFRA, not silently blamed on the model.
+    from kbreliability.answer import HeuristicAnswerer
+    from kbreliability.retrieve import KeywordRetriever
+
+    class BoomJudge:
+        name = "boom-judge"
+
+        def assess(self, answer_text, article):  # type: ignore[no-untyped-def]
+            raise RuntimeError("judge harness exploded")
+
+    r = run_question(
+        KeywordRetriever(), HeuristicAnswerer(), BoomJudge(), get_question("q-iban"), k=4
+    )
+    assert r.passed is False
+    assert r.fault is Layer.INFRA
+    assert r.retrieval_miss is False  # the retriever worked
+    assert r.ungrounded is False  # not a generation fault
+    assert r.trace["crashed_stage"] == "infra"
 
 
 def test_a_crashing_answerer_is_attributed_to_generation() -> None:

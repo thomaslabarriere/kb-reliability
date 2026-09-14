@@ -1,0 +1,35 @@
+# Real gpt-4o run — raw CLI output (committed as evidence)
+# Date: 2026-09-14
+# Numbers are non-deterministic run to run; this is one captured run.
+
+$ kb-reliability diagnose --answerer llm --model gpt-4o
+────────────────────────────────────────────────────────────────
+kb-reliability: keyword / llm:gpt-4o
+────────────────────────────────────────────────────────────────
+Réussite: 5/5 questions
+
+Par question (faute attribuée à la couche)
+  ✓ q-card   cité: card-block-v2
+  ✓ q-iban   cité: iban-v1
+  ✓ q-refund   cité: refund-v1
+  ✓ q-kyc   cité: kyc-v1
+  ✓ q-chargeback   cité: chargeback-v1
+
+Métriques par couche
+  Retrieval recall:   100%
+  Groundedness:       100%
+  Réponses périmées:  0
+  Fuites de permission: 0
+
+Attribution des fautes
+  (aucune faute)
+
+Coût & latence
+  Tokens: 1275   Coût estimé: $0.0049 (prix catalogue indicatif)
+  Latence: 11258 ms/question
+────────────────────────────────────────────────────────────────
+
+$ kb-reliability calibrate --judge llm --model gpt-4o
+Calibration du juge « llm-judge:gpt-4o »
+  Accord: 83% (5/6)
+  Faux positifs: 0   Faux négatifs: 1
