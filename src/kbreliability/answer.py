@@ -12,7 +12,7 @@ import json
 from typing import Protocol
 
 from .llm_client import make_client
-from .models import Answer, Article, Question, TokenUsage
+from .models import Answer, Article, GroundednessVerdict, Question, TokenUsage
 
 
 class Answerer(Protocol):
@@ -146,9 +146,11 @@ def _parse_answer(args_json: str) -> Answer | None:
 
 
 class LLMGroundednessJudge:
-    """LLM judge for the real run (needs a key). Fail-open: on any error it
-    returns grounded=True, so a judge fault never fabricates a generation
-    failure (its own reliability is measured via calibration)."""
+    """LLM judge for the real run (needs a key). On any judge fault (client
+    raises, or an empty/unparseable reply) it returns UNCERTAIN -- NOT grounded
+    and NOT ungrounded. A judge outage must neither be silently certified as a
+    verified pass nor fabricated into a generation failure; it is surfaced as a
+    distinct 'indéterminé' outcome in the report."""
 
     def __init__(
         self, model: str = "gpt-4o", provider: str = "openai", api_key: str | None = None
@@ -157,7 +159,7 @@ class LLMGroundednessJudge:
         self._model = model
         self._client = make_client(provider, api_key)
 
-    def is_grounded(self, answer_text: str, article: Article) -> bool:
+    def assess(self, answer_text: str, article: Article) -> GroundednessVerdict:
         prompt = (
             "L'affirmation est-elle entièrement soutenue par l'article ? "
             "Réponds par 'oui' ou 'non'.\n\n"
@@ -169,6 +171,10 @@ class LLMGroundednessJudge:
                 messages=[{"role": "user", "content": prompt}],
             )
             content = (completion.choices[0].message.content or "").strip().lower()
-        except Exception:  # noqa: BLE001 - fail open
-            return True
-        return not content.startswith("non")
+        except Exception:  # noqa: BLE001 - judge fault -> UNCERTAIN, never a silent verdict
+            return GroundednessVerdict.UNCERTAIN
+        if not content:  # empty / unparseable reply is also a judge fault
+            return GroundednessVerdict.UNCERTAIN
+        if content.startswith("non"):
+            return GroundednessVerdict.UNGROUNDED
+        return GroundednessVerdict.GROUNDED

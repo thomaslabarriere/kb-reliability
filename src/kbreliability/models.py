@@ -28,6 +28,18 @@ class Layer(StrEnum):
     GENERATION = "generation"
 
 
+class GroundednessVerdict(StrEnum):
+    """A groundedness judge's outcome. UNCERTAIN is an explicit judge-error /
+    could-not-verify state: on an API error or unparseable reply the judge must
+    NOT fold the answer into GROUNDED (pretending it was verified) nor into
+    UNGROUNDED (fabricating a generation failure). It is surfaced separately.
+    """
+
+    GROUNDED = "grounded"
+    UNGROUNDED = "ungrounded"
+    UNCERTAIN = "uncertain"
+
+
 class Article(BaseModel):
     """One KB article. Topics may have several versions; one is current."""
 
@@ -77,6 +89,10 @@ class QuestionResult(BaseModel):
     permission_leak: bool = False
     stale_answer: bool = False
     ungrounded: bool = False
+    # The judge could not verify groundedness (API error / unparseable reply).
+    # Distinct from `ungrounded`: the answer is NOT declared a generation fault,
+    # but it is NOT counted as a verified pass either.
+    judge_error: bool = False
     trace: dict[str, str] = Field(default_factory=dict)
     latency_ms: float = 0.0
     usage: TokenUsage = Field(default_factory=TokenUsage)
@@ -92,8 +108,11 @@ class DiagnosticReport(BaseModel):
     fault_breakdown: dict[Layer, int] = Field(default_factory=dict)
     # Retrieval recall: gold-topic article retrieved / total.
     retrieval_recall: float = 1.0
-    # Grounded answers / answered questions.
+    # Grounded answers / VERIFIED answers (judge-error answers excluded, since
+    # their groundedness is unknown -- see groundedness_uncertain).
     groundedness_rate: float = 1.0
+    # Answers whose groundedness the judge could not verify (judge outage).
+    groundedness_uncertain: int = 0
     stale_answers: int = 0
     permission_leaks: int = 0
     results: list[QuestionResult] = Field(default_factory=list)

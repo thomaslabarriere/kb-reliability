@@ -10,28 +10,30 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from .models import Article, GroundGoldItem, JudgeCalibration
+from .models import Article, GroundednessVerdict, GroundGoldItem, JudgeCalibration
 from .text import tokens as _tokens
 
 
 class GroundednessJudge(Protocol):
     name: str
 
-    def is_grounded(self, answer_text: str, article: Article) -> bool: ...
+    def assess(self, answer_text: str, article: Article) -> GroundednessVerdict: ...
 
 
 class StaticGroundednessJudge:
     """Deterministic: grounded iff the answer shares at least `min_overlap`
-    content tokens with the article body. Offline, no key."""
+    content tokens with the article body. Offline, no key -- never UNCERTAIN."""
 
     def __init__(self, min_overlap: int = 3) -> None:
         self.name = "static-overlap"
         self._min = min_overlap
 
-    def is_grounded(self, answer_text: str, article: Article) -> bool:
+    def assess(self, answer_text: str, article: Article) -> GroundednessVerdict:
         answer_terms = set(_tokens(answer_text))
         body_terms = set(_tokens(f"{article.title} {article.body}"))
-        return len(answer_terms & body_terms) >= self._min
+        if len(answer_terms & body_terms) >= self._min:
+            return GroundednessVerdict.GROUNDED
+        return GroundednessVerdict.UNGROUNDED
 
 
 class AllGroundedJudge:
@@ -40,8 +42,8 @@ class AllGroundedJudge:
 
     name = "always-grounded"
 
-    def is_grounded(self, answer_text: str, article: Article) -> bool:
-        return True
+    def assess(self, answer_text: str, article: Article) -> GroundednessVerdict:
+        return GroundednessVerdict.GROUNDED
 
 
 def calibrate_judge(
@@ -53,12 +55,17 @@ def calibrate_judge(
     false_positive = 0
     false_negative = 0
     for item in gold:
-        verdict = judge.is_grounded(item.answer_text, get_article(item.article_id))
-        if verdict == item.grounded:
+        verdict = judge.assess(item.answer_text, get_article(item.article_id))
+        # Calibration scores the judge's decisiveness on labelled data; an
+        # UNCERTAIN verdict counts as neither agreement nor a directional error.
+        grounded = verdict is GroundednessVerdict.GROUNDED
+        if verdict is GroundednessVerdict.UNCERTAIN:
+            continue
+        if grounded == item.grounded:
             agree += 1
-        elif verdict and not item.grounded:
+        elif grounded and not item.grounded:
             false_positive += 1
-        elif not verdict and item.grounded:
+        elif not grounded and item.grounded:
             false_negative += 1
     return JudgeCalibration(
         judge_name=judge.name,

@@ -69,6 +69,8 @@ kb-reliability diagnose --answerer llm --model gpt-4o
 
 With a key, an LLM answers each question grounded in the retrieved articles and an LLM judges groundedness; the report adds inference cost ($/question, illustrative) and latency, the *qualité / latence / coût* arbitrage the role calls for.
 
+For a reliability tool, the direction the judge fails matters. When the judge's LLM call raises or returns an unparseable reply, the answer is **not** silently counted as grounded (that would certify an answer nobody verified) and **not** counted as a generation failure (that would blame the model for a judge outage). It becomes an explicit *indéterminé* outcome, excluded from the groundedness rate and surfaced on its own line (`Groundedness indéterminé / erreur juge: N`), so a judge outage can never be mistaken for either a clean pass or a generation fault.
+
 ## Retrieval depth (chunking · hybrid · reranking)
 
 The three retrieval bricks the role names are wired into the diagnostic pipeline, not bolted on as demos: `--retriever semantic|hybrid` and `--reranker lexical|llm` run the full per-layer diagnosis through those components.

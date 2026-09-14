@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from .judge import GroundednessJudge
 from .kb import get_article, is_permitted
-from .models import Answer, Article, Layer, Question, QuestionResult
+from .models import Answer, Article, GroundednessVerdict, Layer, Question, QuestionResult
 
 
 def evaluate_question(
@@ -36,6 +36,8 @@ def evaluate_question(
 
     stale_answer = cited is not None and cited.topic == gold_topic and not cited.is_current
 
+    ungrounded = False
+    judge_error = False
     if cited is None:
         ungrounded = True
     elif cited.article_id not in retrieved_ids:
@@ -43,7 +45,13 @@ def evaluate_question(
     elif cited.topic != gold_topic:
         ungrounded = True  # grounded in the wrong topic entirely
     else:
-        ungrounded = not judge.is_grounded(answer.text, cited)
+        verdict = judge.assess(answer.text, cited)
+        if verdict is GroundednessVerdict.UNGROUNDED:
+            ungrounded = True
+        elif verdict is GroundednessVerdict.UNCERTAIN:
+            # Judge outage: neither a verified pass nor a fabricated generation
+            # fault. Surfaced separately; NOT attributed to the generation layer.
+            judge_error = True
 
     fault: Layer | None = None
     if retrieval_miss:
@@ -55,14 +63,20 @@ def evaluate_question(
     elif ungrounded:
         fault = Layer.GENERATION
 
+    # A clean pass requires the groundedness to have been VERIFIED. When the
+    # judge could not verify it, the question is neither a pass (nothing was
+    # confirmed) nor attributed to any layer (nothing failed).
+    passed = fault is None and not judge_error
+
     return QuestionResult(
         question_id=question.question_id,
-        passed=fault is None,
+        passed=passed,
         fault=fault,
         retrieval_miss=retrieval_miss,
         permission_leak=permission_leak,
         stale_answer=stale_answer,
         ungrounded=ungrounded,
+        judge_error=judge_error,
         trace={
             "retrieved": ",".join(a.article_id for a in retrieved) or "(none)",
             "cited": answer.cited_article_id or "(none)",

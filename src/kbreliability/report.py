@@ -19,7 +19,12 @@ def build_report(system_name: str, results: list[QuestionResult]) -> DiagnosticR
 
     retrieval_hits = sum(1 for r in results if not r.retrieval_miss)
     answered = [r for r in results if r.trace.get("cited", "(none)") != "(none)"]
-    grounded = sum(1 for r in answered if not r.ungrounded)
+    # Groundedness is measured only over answers the judge could VERIFY. Answers
+    # the judge could not verify (judge outage) are excluded from the rate and
+    # counted separately, so a judge outage never silently inflates or deflates
+    # the groundedness metric.
+    verified = [r for r in answered if not r.judge_error]
+    grounded = sum(1 for r in verified if not r.ungrounded)
 
     return DiagnosticReport(
         system_name=system_name,
@@ -27,7 +32,8 @@ def build_report(system_name: str, results: list[QuestionResult]) -> DiagnosticR
         passed=passed,
         fault_breakdown=fault_breakdown,
         retrieval_recall=retrieval_hits / total if total else 1.0,
-        groundedness_rate=grounded / len(answered) if answered else 1.0,
+        groundedness_rate=grounded / len(verified) if verified else 1.0,
+        groundedness_uncertain=sum(1 for r in answered if r.judge_error),
         stale_answers=sum(1 for r in results if r.stale_answer),
         permission_leaks=sum(1 for r in results if r.permission_leak),
         results=results,
@@ -54,6 +60,10 @@ def render_report(report: DiagnosticReport) -> str:
     lines.append("Métriques par couche")
     lines.append(f"  Retrieval recall:   {report.retrieval_recall * 100:.0f}%")
     lines.append(f"  Groundedness:       {report.groundedness_rate * 100:.0f}%")
+    if report.groundedness_uncertain:
+        lines.append(
+            f"  Groundedness indéterminé / erreur juge: {report.groundedness_uncertain}"
+        )
     lines.append(f"  Réponses périmées:  {report.stale_answers}")
     lines.append(f"  Fuites de permission: {report.permission_leaks}")
     lines.append("")

@@ -17,6 +17,7 @@ import pytest
 from kbreliability import answer as answer_mod
 from kbreliability.answer import LLMAnswerer, LLMGroundednessJudge, _parse_answer
 from kbreliability.kb import get_article
+from kbreliability.models import GroundednessVerdict
 from kbreliability.questions import get_question
 
 
@@ -123,17 +124,31 @@ def test_judge_reads_a_clear_yes_and_no(monkeypatch: pytest.MonkeyPatch) -> None
         return _fake_client(lambda **kw: _text_completion(content))
 
     monkeypatch.setattr(answer_mod, "make_client", lambda *a, **k: _client_replying("Oui."))
-    assert LLMGroundednessJudge(model="gpt-4o").is_grounded("x", article) is True
+    assert LLMGroundednessJudge(model="gpt-4o").assess("x", article) is GroundednessVerdict.GROUNDED
     monkeypatch.setattr(answer_mod, "make_client", lambda *a, **k: _client_replying("Non."))
-    assert LLMGroundednessJudge(model="gpt-4o").is_grounded("x", article) is False
+    assert (
+        LLMGroundednessJudge(model="gpt-4o").assess("x", article)
+        is GroundednessVerdict.UNGROUNDED
+    )
 
 
-def test_judge_fails_open_on_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_judge_returns_uncertain_on_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def boom(**kw: Any) -> Any:
         raise RuntimeError("API is down")
 
     monkeypatch.setattr(answer_mod, "make_client", lambda *a, **k: _fake_client(boom))
     judge = LLMGroundednessJudge(model="gpt-4o")
-    # Fail-open: a judge fault returns grounded=True so it never FABRICATES a
-    # generation failure (a false 'ungrounded'); its reliability is calibrated.
-    assert judge.is_grounded("anything", get_article("card-block-v2")) is True
+    # A judge fault must NOT fold into GROUNDED (pretending the answer was
+    # verified) nor into UNGROUNDED (fabricating a generation failure). It is an
+    # explicit UNCERTAIN outcome, surfaced separately in the report.
+    verdict = judge.assess("anything", get_article("card-block-v2"))
+    assert verdict is GroundednessVerdict.UNCERTAIN
+
+
+def test_judge_returns_uncertain_on_empty_reply(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        answer_mod, "make_client", lambda *a, **k: _fake_client(lambda **kw: _text_completion(None))
+    )
+    judge = LLMGroundednessJudge(model="gpt-4o")
+    # An empty / unparseable reply is a judge fault, not a silent 'grounded'.
+    assert judge.assess("anything", get_article("card-block-v2")) is GroundednessVerdict.UNCERTAIN
