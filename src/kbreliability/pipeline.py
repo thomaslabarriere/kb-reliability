@@ -8,6 +8,7 @@ from .answer import Answerer
 from .evaluate import evaluate_question
 from .judge import GroundednessJudge
 from .models import Question, QuestionResult
+from .rerank import Reranker
 from .retrieve import Retriever
 
 
@@ -17,12 +18,19 @@ def run_question(
     judge: GroundednessJudge,
     question: Question,
     k: int,
+    reranker: Reranker | None = None,
 ) -> QuestionResult:
     """Diagnose one question. A raising retriever/answerer is isolated into a
-    generation-fault result rather than sinking the run."""
+    generation-fault result rather than sinking the run.
+
+    When a `reranker` is given, the first-stage shortlist is reordered before the
+    answerer cites rank 1 -- so reranking genuinely changes the diagnosis, not a
+    separate demo."""
     start = time.perf_counter()
     try:
         retrieved = retriever.retrieve(question, k)
+        if reranker is not None:
+            retrieved = reranker.rerank(question, retrieved)
         answer, usage = answerer.answer(question, retrieved)
         result = evaluate_question(question, retrieved, answer, judge)
     except Exception as exc:  # noqa: BLE001 - isolate per-question failures
@@ -49,5 +57,6 @@ def run_all(
     judge: GroundednessJudge,
     questions: list[Question],
     k: int,
+    reranker: Reranker | None = None,
 ) -> list[QuestionResult]:
-    return [run_question(retriever, answerer, judge, q, k) for q in questions]
+    return [run_question(retriever, answerer, judge, q, k, reranker) for q in questions]

@@ -1,14 +1,16 @@
 """kb-reliability CLI.
 
-  kb-reliability diagnose   [--retriever keyword|fresh|semantic|hybrid] [--answerer heuristic|llm]
+  kb-reliability diagnose   [--retriever keyword|fresh|semantic|hybrid] \
+                            [--answerer heuristic|llm] [--reranker none|lexical|llm]
   kb-reliability calibrate  [--judge static|llm]
-  kb-reliability retrievers                 # compare lexical vs semantic vs hybrid recall (key)
+  kb-reliability retrievers                 # compare lexical vs semantic vs hybrid recall (offline)
   kb-reliability chunks     [--max-chars N] # chunk vs whole-article retrieval (offline)
   kb-reliability rerank     [--reranker lexical|llm]  # precision@1 before/after rerank
 
-Offline by default. The `llm`/`semantic`/`hybrid` paths need OPENAI_API_KEY (or
-OPENROUTER_API_KEY + --provider openrouter) -- the only thing required to run
-the real system.
+Offline by default -- every command runs with NO API key. The semantic/hybrid
+retrievers fall back to a deterministic hashed-bag-of-words embedder offline and
+use real embeddings when OPENAI_API_KEY (or OPENROUTER_API_KEY + --provider
+openrouter) is set. The `llm` answerer/judge/reranker paths need a key.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from .judge import GroundednessJudge, StaticGroundednessJudge, calibrate_judge
 from .pipeline import run_all
 from .questions import QUESTIONS
 from .report import build_report, render_report
+from .rerank import Reranker
 from .retrieve import HybridRetriever, KeywordRetriever, Retriever, SemanticRetriever
 
 
@@ -36,18 +39,39 @@ def _require_key(provider: str) -> None:
         )
 
 
+def _make_embedder(provider: str):  # type: ignore[no-untyped-def]
+    """Real embeddings when a key is set, else the deterministic OFFLINE fallback
+    (hashed bag-of-words) so semantic/hybrid retrieval runs with no key."""
+    var = "OPENROUTER_API_KEY" if provider == "openrouter" else "OPENAI_API_KEY"
+    if os.environ.get(var):
+        from .embeddings import EmbeddingClient
+
+        return EmbeddingClient(provider=provider)
+    from .embeddings import HashingEmbedder
+
+    return HashingEmbedder()
+
+
 def _build_retriever(kind: str, provider: str, model: str) -> Retriever:
     if kind == "fresh":
         return KeywordRetriever(freshness_aware=True)
     if kind in ("semantic", "hybrid"):
-        _require_key(provider)
-        from .embeddings import EmbeddingClient
-
-        semantic = SemanticRetriever(EmbeddingClient(provider=provider))
+        semantic = SemanticRetriever(_make_embedder(provider))
         if kind == "semantic":
             return semantic
         return HybridRetriever(KeywordRetriever(), semantic)
     return KeywordRetriever()
+
+
+def _build_reranker(kind: str, provider: str, model: str) -> Reranker | None:
+    from .rerank import LexicalReranker, LLMReranker
+
+    if kind == "lexical":
+        return LexicalReranker()
+    if kind == "llm":
+        _require_key(provider)
+        return LLMReranker(model=model, provider=provider)
+    return None
 
 
 def _diagnose(args: argparse.Namespace) -> int:
@@ -62,8 +86,11 @@ def _diagnose(args: argparse.Namespace) -> int:
         answerer = HeuristicAnswerer()
         judge = StaticGroundednessJudge()
 
-    results = run_all(retriever, answerer, judge, QUESTIONS, args.k)
+    reranker = _build_reranker(args.reranker, args.provider, args.model)
+    results = run_all(retriever, answerer, judge, QUESTIONS, args.k, reranker)
     system_name = f"{retriever.name} / {answerer.name}"
+    if reranker is not None:
+        system_name += f" + {reranker.name}"
     report = build_report(system_name, results)
     print(render_report(report))
     if args.json:
@@ -89,19 +116,21 @@ def _calibrate(args: argparse.Namespace) -> int:
 
 
 def _retrievers(args: argparse.Namespace) -> int:
-    """Compare retrieval recall of lexical vs semantic vs hybrid (needs a key)."""
-    _require_key(args.provider)
-    judge = StaticGroundednessJudge()
-    answerer = HeuristicAnswerer()
-    names = ["keyword", "semantic", "hybrid"]
-    print("Comparaison des retrievers (recall sur le bon article)")
-    print(f"  {'retriever':<12} recall   réussite")
-    for name in names:
-        retriever = _build_retriever(name, args.provider, args.model)
-        results = run_all(retriever, answerer, judge, QUESTIONS, args.k)
-        report = build_report(retriever.name, results)
-        recall = f"{report.retrieval_recall * 100:>4.0f}%"
-        print(f"  {retriever.name:<12} {recall}   {report.passed}/{report.total}")
+    """Compare retrieval recall of lexical vs semantic vs hybrid.
+
+    Runs OFFLINE by default via the deterministic hashed-bag-of-words embedder;
+    set OPENAI_API_KEY (or OPENROUTER_API_KEY) to compare with real embeddings.
+    """
+    from .measure import measure_recall
+
+    var = "OPENROUTER_API_KEY" if args.provider == "openrouter" else "OPENAI_API_KEY"
+    embed_mode = "réelles (clé)" if os.environ.get(var) else "hors-ligne (bag-of-words haché)"
+    rows = measure_recall(_make_embedder(args.provider), k=args.k)
+    print("Comparaison des retrievers (recall du bon article sur le jeu labellisé)")
+    print(f"  Embeddings: {embed_mode}")
+    print(f"  {'retriever':<12} recall")
+    for name, recall in rows:
+        print(f"  {name:<12} {recall * 100:>4.0f}%")
     return 0
 
 
@@ -123,7 +152,7 @@ def _chunks(args: argparse.Namespace) -> int:
 
 def _rerank(args: argparse.Namespace) -> int:
     """Precision@1 before vs after reranking, on a crafted shortlist."""
-    from .rerank import LexicalReranker, LLMReranker, Reranker, demo_scenario, top1_correct
+    from .rerank import LexicalReranker, LLMReranker, demo_scenario, top1_correct
 
     question, candidates, gold_topic = demo_scenario()
     reranker: Reranker
@@ -154,6 +183,7 @@ def main(argv: list[str] | None = None) -> int:
         "--retriever", choices=["keyword", "fresh", "semantic", "hybrid"], default="keyword"
     )
     diag.add_argument("--answerer", choices=["heuristic", "llm"], default="heuristic")
+    diag.add_argument("--reranker", choices=["none", "lexical", "llm"], default="none")
     diag.add_argument("--k", type=int, default=4)
     diag.add_argument("--provider", choices=["openai", "openrouter"], default="openai")
     diag.add_argument("--model", default="gpt-4o")

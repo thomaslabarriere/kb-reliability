@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from kbreliability.answer import HeuristicAnswerer
 from kbreliability.chunking import analyze, chunk_text
+from kbreliability.embeddings import HashingEmbedder
+from kbreliability.judge import StaticGroundednessJudge
+from kbreliability.measure import measure_recall
+from kbreliability.pipeline import run_all
+from kbreliability.questions import QUESTIONS, get_question
 from kbreliability.rerank import LexicalReranker, demo_scenario, top1_correct
-from kbreliability.retrieve import reciprocal_rank_fusion
+from kbreliability.retrieve import KeywordRetriever, reciprocal_rank_fusion
 
 
 def test_rrf_rewards_agreement_across_rankings() -> None:
@@ -49,3 +55,59 @@ def test_chunk_text_respects_the_size_bound() -> None:
     chunks = chunk_text("Un. Deux. Trois. Quatre. Cinq.", max_chars=12)
     assert len(chunks) >= 2
     assert all(len(c.text) <= 12 or " " not in c.text for c in chunks)
+
+
+def test_offline_recall_lexical_semantic_hybrid_all_saturate() -> None:
+    # Pins the REAL measured recall reported in the README. On this toy gold
+    # set every question's gold topic is trivially retrievable, so lexical,
+    # semantic (hashed-BoW offline embeddings) and hybrid all reach 100% --
+    # hybrid does NOT beat lexical here (recall is saturated, an honest finding).
+    rows = measure_recall(HashingEmbedder(), k=4)
+    assert [name for name, _ in rows] == ["keyword", "semantic", "hybrid"]
+    assert all(recall == 1.0 for _, recall in rows)
+
+
+def test_semantic_hybrid_run_fully_offline_with_hashed_embeddings() -> None:
+    # The hashed-BoW embedder gives the semantic/hybrid retrievers a real vector
+    # signal, so the whole per-layer pipeline runs with no API key.
+    from kbreliability.retrieve import HybridRetriever, SemanticRetriever
+
+    semantic = SemanticRetriever(HashingEmbedder())
+    hybrid = HybridRetriever(KeywordRetriever(), SemanticRetriever(HashingEmbedder()))
+    for retriever in (semantic, hybrid):
+        results = run_all(
+            retriever, HeuristicAnswerer(), StaticGroundednessJudge(), QUESTIONS, k=4
+        )
+        assert len(results) == len(QUESTIONS)
+
+
+def test_reranker_wired_into_pipeline_reorders_before_citation() -> None:
+    # With a reranker in the pipeline, the answerer cites the reranked rank 1,
+    # not the first-stage rank 1 -- proving reranking is wired into diagnosis.
+    # A fixed shortlist (real KB articles) puts an off-topic article first.
+    from kbreliability.kb import get_article
+
+    question = get_question("q-iban")
+    shortlist = [get_article("refund-v1"), get_article("iban-v1")]
+
+    class _FixedRetriever:
+        name = "fixed"
+
+        def retrieve(self, q: object, k: int) -> list:  # type: ignore[type-arg]
+            return list(shortlist)
+
+    plain = run_all(
+        _FixedRetriever(), HeuristicAnswerer(), StaticGroundednessJudge(), [question], k=4
+    )
+    reranked = run_all(
+        _FixedRetriever(),
+        HeuristicAnswerer(),
+        StaticGroundednessJudge(),
+        [question],
+        k=4,
+        reranker=LexicalReranker(),
+    )
+    assert plain[0].trace["cited"] == "refund-v1"   # off-topic distractor first
+    assert plain[0].passed is False                 # cites the wrong topic
+    assert reranked[0].trace["cited"] == "iban-v1"  # reranker moved gold to rank 1
+    assert reranked[0].passed is True

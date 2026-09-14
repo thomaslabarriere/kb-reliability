@@ -1,13 +1,21 @@
 """Embedding client + cosine, used by the semantic/hybrid retrievers.
 
+Two embedders sit behind the same `Embedder` protocol:
+- `EmbeddingClient` -- the real OpenAI/OpenRouter embeddings endpoint (a key).
+- `HashingEmbedder` -- a deterministic OFFLINE fallback (hashed bag-of-words)
+  so semantic/hybrid retrieval, and the recall comparison, run with NO key.
+
 The OpenAI call is isolated here so the retrieval logic (ranking, fusion) stays
 pure and unit-testable without a network. Needs a key only when actually used.
 """
 
 from __future__ import annotations
 
+import hashlib
 import math
 import os
+
+from .text import tokens as _tokens
 
 
 def cosine(a: list[float], b: list[float]) -> float:
@@ -42,3 +50,29 @@ class EmbeddingClient:
     def embed(self, texts: list[str]) -> list[list[float]]:
         response = self._client.embeddings.create(model=self.model, input=texts)
         return [item.embedding for item in response.data]
+
+
+class HashingEmbedder:
+    """Deterministic OFFLINE embedder: hashed bag-of-words vectors, no key.
+
+    Each content token is hashed into one of `dim` buckets and counted. Two
+    texts that share tokens get overlapping vectors, so cosine gives a real (if
+    crude) lexical-semantic signal -- enough for semantic/hybrid retrieval and
+    the recall comparison to run with no network. Not a substitute for a real
+    embedding model; the `EmbeddingClient` path is used whenever a key is set.
+    """
+
+    name = "hashing"
+
+    def __init__(self, dim: int = 256) -> None:
+        self.dim = dim
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        return [self._vector(text) for text in texts]
+
+    def _vector(self, text: str) -> list[float]:
+        vec = [0.0] * self.dim
+        for token in _tokens(text):
+            digest = hashlib.sha1(token.encode("utf-8")).hexdigest()
+            vec[int(digest, 16) % self.dim] += 1.0
+        return vec

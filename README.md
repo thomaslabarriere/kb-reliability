@@ -71,14 +71,27 @@ With a key, an LLM answers each question grounded in the retrieved articles and 
 
 ## Retrieval depth (chunking · hybrid · reranking)
 
-The three retrieval bricks the role names, each a small dedicated module (`Retriever` for hybrid, `Reranker` for reranking, a standalone analysis for chunking):
+The three retrieval bricks the role names are wired into the diagnostic pipeline, not bolted on as demos: `--retriever semantic|hybrid` and `--reranker lexical|llm` run the full per-layer diagnosis through those components.
 
-**Hybrid retrieval**, `SemanticRetriever` (embeddings + cosine) and `HybridRetriever` (reciprocal-rank fusion of the lexical and semantic rankings, no score normalization needed). Compare them on recall:
+**Hybrid retrieval**, `SemanticRetriever` (embeddings + cosine) and `HybridRetriever` (reciprocal-rank fusion of the lexical and semantic rankings, no score normalization needed). Both run **offline** via a deterministic hashed-bag-of-words embedder, or with real embeddings when a key is set:
 
 ```bash
-kb-reliability retrievers --model gpt-4o      # lexical vs semantic vs hybrid (needs a key)
-kb-reliability diagnose --retriever hybrid    # run the full diagnosis on the hybrid retriever
+kb-reliability retrievers                     # lexical vs semantic vs hybrid recall (offline)
+kb-reliability diagnose --retriever hybrid    # full per-layer diagnosis on the hybrid retriever
 ```
+
+Measured recall of the gold topic on the labelled question set (offline embeddings), verbatim `kb-reliability retrievers`:
+
+```
+Comparaison des retrievers (recall du bon article sur le jeu labellisé)
+  Embeddings: hors-ligne (bag-of-words haché)
+  retriever    recall
+  keyword       100%
+  semantic      100%
+  hybrid        100%
+```
+
+**Honest finding: on this toy KB, hybrid does _not_ beat lexical**, all three already reach 100% recall (the gold topic is trivially retrievable, even at `--k 1`). Recall is saturated, so it cannot discriminate here, which is exactly the repo's thesis: recall looks perfect while the real failure hides on the **freshness** axis (see above). Hybrid's payoff appears on hard corpora where lexical misses paraphrased queries; this synthetic set is too easy to show it. The number above is pinned by a regression test, and `diagnose --retriever hybrid` runs the identical per-layer attribution as the keyword baseline, so the instrument is retriever-agnostic. Plug in a real KB + embeddings for real separation.
 
 **Chunking**, whole-article retrieval feeds the entire document as context even when one section answers the question. Chunking pinpoints the section (offline):
 
@@ -93,9 +106,9 @@ Chunking: récupération ciblée sur un article long
   Chunk: « Pour instruire le litige, joignez une preuve d'achat, une capture de la transaction et, le cas échéant, un échange écrit avec le marchand. »
 ```
 
-Same answer, **79% less context** fed to the model, better groundedness and lower cost. (These figures are pinned by a regression test so the README can't drift from the code.)
+The right section is retrieved with **79% less context** (138 vs 667 characters) than feeding the whole article. That is a measured context reduction, pinned by a regression test; feeding a model fewer, on-target tokens is what lowers per-call cost and narrows what an answer can be (un)grounded in, but this repo measures only the context reduction, not a downstream groundedness or dollar delta on this toy doc.
 
-**Reranking**, first-stage lexical retrieval optimises recall, not precision@1; a wordy distractor can sit at rank 1 (which the answerer cites). A reranker fixes the order (offline lexical, or `--reranker llm`):
+**Reranking**, first-stage lexical retrieval optimises recall, not precision@1; a wordy distractor can sit at rank 1 (which the answerer cites). A reranker fixes the order. It is wired into the pipeline (`kb-reliability diagnose --reranker lexical|llm` reorders the shortlist before the answer step); `kb-reliability rerank` isolates the precision@1 flip on a crafted shortlist:
 
 ```
 $ kb-reliability rerank
@@ -137,7 +150,8 @@ src/kbreliability/
   questions.py   # support questions + ground truth (gold topic, asker scopes)
   text.py        # shared tokenizer (retrieval + judge)
   retrieve.py    # lexical / semantic / hybrid (RRF) retrievers + fixtures
-  embeddings.py  # embedding client + cosine (semantic/hybrid)
+  embeddings.py  # embedding client + OFFLINE hashed-BoW fallback + cosine
+  measure.py     # recall of lexical/semantic/hybrid on the gold set
   rerank.py      # reranking stage (lexical + LLM)
   chunking.py    # chunk vs whole-article retrieval analysis
   answer.py      # heuristic + LLM answerer, LLM groundedness judge
