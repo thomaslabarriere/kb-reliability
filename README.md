@@ -69,6 +69,11 @@ kb-reliability diagnose --answerer llm --model gpt-4o
 
 With a key, an LLM answers each question grounded in the retrieved articles and an LLM judges groundedness; the report adds inference cost ($/question, illustrative) and latency, the *qualité / latence / coût* arbitrage the role calls for.
 
+**A real gpt-4o run is committed as evidence** (`docs/gpt4o-run.json`, 2026-09-14; numbers vary run to run):
+
+- `diagnose --answerer llm --model gpt-4o` → **5/5**, 100% recall, 100% groundedness, ~1280 tokens, ~$0.005, ~3.0 s/question. The keyword retriever still ranks the stale `card-block-v1` into the shortlist, but gpt-4o **reads the shortlist and cites the current `card-block-v2`** instead of the top-ranked stale one. Honest reading: the freshness failure mode is *answerer-dependent*, a stronger answerer avoids the trap the retriever set, so gpt-4o scores clean here while the offline heuristic answerer (which cites rank 1) fails on freshness. Same instrument, two answerers, one exposes the trap.
+- `calibrate --judge llm --model gpt-4o` → **83% (5/6): 0 false positives, 1 false negative.** The real judge is *not* perfect (the trivial static judge's 6/6 is an artefact, see DECISIONS.md #5). It erred once, in the safe direction: it never certified an unsupported answer as grounded (0 FP), it was over-cautious once (1 FN). That is the whole point of *who judges the judge?*, the harness surfaces a real judge's error rate and its failure direction, instead of trusting it.
+
 For a reliability tool, the direction the judge fails matters. When the judge's LLM call raises or returns an unparseable reply, the answer is **not** silently counted as grounded (that would certify an answer nobody verified) and **not** counted as a generation failure (that would blame the model for a judge outage). It becomes an explicit *indéterminé* outcome, excluded from the groundedness rate and surfaced on its own line (`Groundedness indéterminé / erreur juge: N`), so a judge outage can never be mistaken for either a clean pass or a generation fault.
 
 ## Retrieval depth (chunking · hybrid · reranking)
