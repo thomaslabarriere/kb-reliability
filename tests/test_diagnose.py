@@ -75,7 +75,10 @@ def test_citing_a_forbidden_article_is_a_permission_leak() -> None:
     assert result.fault is Layer.PERMISSIONS
 
 
-def test_a_raising_component_is_isolated() -> None:
+def test_a_crashing_retriever_is_attributed_to_retrieval_not_generation() -> None:
+    # The whole point of the tool is "a layer says *where* to fix it". A
+    # retriever that raises must be a RETRIEVAL fault -- blaming generation for
+    # an upstream crash would send the on-call to the wrong layer.
     class Boom:
         name = "boom"
 
@@ -84,5 +87,24 @@ def test_a_raising_component_is_isolated() -> None:
 
     r = run_question(Boom(), HeuristicAnswerer(), _JUDGE, get_question("q-card"), k=4)
     assert r.passed is False
+    assert r.fault is Layer.RETRIEVAL
+    assert r.retrieval_miss is True
+    assert r.trace["crashed_stage"] == "retrieval"
+
+
+def test_a_crashing_answerer_is_attributed_to_generation() -> None:
+    from kbreliability.retrieve import KeywordRetriever
+
+    class BoomAnswerer:
+        name = "boom-answerer"
+
+        def answer(self, question, retrieved):  # type: ignore[no-untyped-def]
+            raise RuntimeError("model down")
+
+    r = run_question(
+        KeywordRetriever(), BoomAnswerer(), _JUDGE, get_question("q-card"), k=4
+    )
+    assert r.passed is False
     assert r.fault is Layer.GENERATION
-    assert "error" in r.trace
+    assert r.ungrounded is True
+    assert r.trace["crashed_stage"] == "generation"

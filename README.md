@@ -73,7 +73,7 @@ For a reliability tool, the direction the judge fails matters. When the judge's 
 
 ## Retrieval depth (chunking · hybrid · reranking)
 
-The three retrieval bricks the role names are wired into the diagnostic pipeline, not bolted on as demos: `--retriever semantic|hybrid` and `--reranker lexical|llm` run the full per-layer diagnosis through those components.
+Two of the three retrieval bricks the role names are wired into the diagnostic pipeline, not bolted on as demos: `--retriever semantic|hybrid` and `--reranker lexical|llm` run the full per-layer diagnosis through those components. Chunking is the exception, and is labelled as such below: it ships as a standalone `chunks` analysis (context reduction), not a stage inside `diagnose`.
 
 **Hybrid retrieval**, `SemanticRetriever` (embeddings + cosine) and `HybridRetriever` (reciprocal-rank fusion of the lexical and semantic rankings, no score normalization needed). Both run **offline** via a deterministic hashed-bag-of-words embedder, or with real embeddings when a key is set:
 
@@ -132,9 +132,9 @@ Calibration du juge « static-overlap »
 
 `kb-reliability calibrate` scores the judge; the tests prove a judge that rubber-stamps everything as grounded is caught by its false positives.
 
-## Why you can trust the instrument (mutation proof)
+## Why you can trust the instrument (fault injection per layer)
 
-`tests/` asserts each layer's failure is produced **and attributed to the right layer**: a blind retriever → `retrieval`; a permission-blind retriever → `permissions`; the stale-ranking baseline → `freshness`; a hallucinating answerer → `generation`; a correct system passes clean; a raising component is isolated per question. Plus the judge-calibration guards.
+Not mutation testing (no operator mutates the diagnostic source), this is **fault injection on the system under test**: `tests/` feeds the diagnostic a component broken in one specific way and asserts the failure is produced **and attributed to the right layer**, a blind retriever → `retrieval`; a permission-blind retriever → `permissions`; the stale-ranking baseline → `freshness`; a hallucinating answerer → `generation`. A crashing stage is attributed to the stage that raised, a retriever that throws is a `retrieval` fault, an answerer that throws a `generation` one, never dumped on generation wholesale. A correct system passes clean. Plus the judge-calibration guards.
 
 ```bash
 ruff check src tests
@@ -164,7 +164,7 @@ src/kbreliability/
   report.py      # aggregate + render the layer-attributed report
   pricing.py     # illustrative token pricing for the cost line
   cli.py         # diagnose | calibrate | retrievers | chunks | rerank
-tests/           # mutation-proof (per layer) + calibration + retrieval-depth guards
+tests/           # per-layer fault injection + calibration + retrieval-depth guards
 ```
 
 ## License

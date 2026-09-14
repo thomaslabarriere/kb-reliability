@@ -26,6 +26,12 @@ class Layer(StrEnum):
     PERMISSIONS = "permissions"
     FRESHNESS = "freshness"
     GENERATION = "generation"
+    # A component itself crashed (raised) rather than returning a bad answer.
+    # The crash is attributed to the STAGE that raised -- a retriever that
+    # throws is a RETRIEVAL fault, not a generation one -- so the layer still
+    # points where to look. INFRA is the last resort when the stage is unknown
+    # (e.g. the diagnostic harness itself raised).
+    INFRA = "infra"
 
 
 class GroundednessVerdict(StrEnum):

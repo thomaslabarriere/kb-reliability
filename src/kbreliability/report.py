@@ -5,7 +5,13 @@ from __future__ import annotations
 from .models import DiagnosticReport, Layer, QuestionResult
 from .pricing import estimate_usd, model_from_name
 
-_LAYER_ORDER = [Layer.RETRIEVAL, Layer.PERMISSIONS, Layer.FRESHNESS, Layer.GENERATION]
+_LAYER_ORDER = [
+    Layer.RETRIEVAL,
+    Layer.PERMISSIONS,
+    Layer.FRESHNESS,
+    Layer.GENERATION,
+    Layer.INFRA,
+]
 
 
 def build_report(system_name: str, results: list[QuestionResult]) -> DiagnosticReport:
