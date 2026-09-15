@@ -1,4 +1,4 @@
-# Real gpt-4o run — raw CLI output (committed as evidence)
+# Real gpt-4o run: raw CLI output (committed as evidence)
 # Date: 2026-09-14
 # Numbers are non-deterministic run to run; this is one captured run.
 
