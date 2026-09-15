@@ -2,7 +2,7 @@
 
 **Layer-attributed reliability diagnostics for a customer-service RAG knowledge base.**
 
-A RAG support assistant is only trustworthy if, when it answers wrong, you can say **which layer failed**, the job it's built for is *"diagnostiquer la performance d'un RAG en séparant les problèmes de retrieval, de contexte, de modèle et de génération."* `kb-reliability` runs a knowledge-base RAG pipeline over a labelled question set and attributes every failure to one layer:
+A RAG support assistant is only trustworthy if, when it answers wrong, you can say **which layer failed**. That is the job this repo is built for, in the job posting's own words: *"diagnostiquer la performance d'un RAG en séparant les problèmes de retrieval, de contexte, de modèle et de génération"* (diagnose a RAG's performance by separating retrieval, context, model and generation problems). `kb-reliability` runs a knowledge-base RAG pipeline over a labelled question set and attributes every failure to one layer:
 
 | Layer | The failure it catches |
 |---|---|
